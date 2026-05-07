@@ -21,3 +21,6 @@ https://www.youtube.com/watch?v=gffZ3S9pBUE
 
 Camera Calibration
 https://docs.opencv.org/4.x/d4/d94/tutorial_camera_calibration.html
+
+Doors, Windows and Stairs Dataset
+https://www.kaggle.com/datasets/nderalparslan/dwsonder?resource=download-directory

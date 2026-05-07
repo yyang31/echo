@@ -1,0 +1,24 @@
+Door/Window/Stair Detection YOLO Training Summary
+=================================================
+
+Dataset: Door/Window/Stair detection dataset
+Training Mode: Limited dataset (500 train, 125 val)
+Classes: door, stairs, window
+
+metrics.box.map: 0.23660708669576447
+metrics.box.map50: 0.4202953896736294
+metrics.box.map75: 0.2523406858449428
+metrics.box.mp: 0.40214875448662574
+metrics.box.mr: 0.4696896434921425
+
+Expected YOLO result files in this run directory typically include:
+- results.csv
+- results.png
+- confusion_matrix.png
+- confusion_matrix_normalized.png
+- F1_curve.png
+- P_curve.png
+- R_curve.png
+- PR_curve.png
+- weights/best.pt
+- weights/last.pt
