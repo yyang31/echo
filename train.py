@@ -81,9 +81,10 @@ def get_device():
 def copy_sample(img_path: Path, lbl_path: Path, out_img_dir: Path, out_lbl_dir: Path):
     """Copy image and label files to output directories.
 
-    Perform basic validation on the label file: non-empty, each line
-    contains at least 5 tokens (class + 4 bbox values), class index is
-    within range of `CLASS_NAMES`, and bbox values parse as floats.
+    Empty label files are allowed and represent background images with no
+    objects. Non-empty label files are validated line by line: each line
+    must contain at least 5 tokens (class + 4 bbox values), class index must
+    be within range of `CLASS_NAMES`, and bbox values must parse as floats.
     If validation fails the image is skipped to avoid training crashes.
     """
     if not lbl_path.exists():
@@ -98,34 +99,34 @@ def copy_sample(img_path: Path, lbl_path: Path, out_img_dir: Path, out_lbl_dir: 
         print(f"Skipping {img_path.name} - failed reading label file: {e}")
         return False
 
-    if not lines:
-        print(f"Skipping {img_path.name} - empty label file")
-        return False
-
-    for i, line in enumerate(lines):
-        parts = line.split()
-        if len(parts) < 5:
-            print(f"Skipping {img_path.name} - invalid label line {i+1}: '{line}'")
-            return False
-        # Parse class index
-        try:
-            cls = int(float(parts[0]))
-        except Exception:
-            print(f"Skipping {img_path.name} - invalid class id in line {i+1}: '{parts[0]}'")
-            return False
-        if cls < 0 or cls >= len(CLASS_NAMES):
-            print(f"Skipping {img_path.name} - class index {cls} out of range (0..{len(CLASS_NAMES)-1})")
-            return False
-        # Parse bbox values
-        try:
-            _ = list(map(float, parts[1:5]))
-        except Exception:
-            print(f"Skipping {img_path.name} - invalid bbox values in line {i+1}")
-            return False
+    if lines:
+        for i, line in enumerate(lines):
+            parts = line.split()
+            if len(parts) < 5:
+                print(f"Skipping {img_path.name} - invalid label line {i+1}: '{line}'")
+                return False
+            # Parse class index
+            try:
+                cls = int(float(parts[0]))
+            except Exception:
+                print(f"Skipping {img_path.name} - invalid class id in line {i+1}: '{parts[0]}'")
+                return False
+            if cls < 0 or cls >= len(CLASS_NAMES):
+                print(f"Skipping {img_path.name} - class index {cls} out of range (0..{len(CLASS_NAMES)-1})")
+                return False
+            # Parse bbox values
+            try:
+                _ = list(map(float, parts[1:5]))
+            except Exception:
+                print(f"Skipping {img_path.name} - invalid bbox values in line {i+1}")
+                return False
 
     # Passed validation, copy files
     shutil.copy2(img_path, out_img_dir / img_path.name)
-    shutil.copy2(lbl_path, out_lbl_dir / lbl_path.name)
+    if lines:
+        shutil.copy2(lbl_path, out_lbl_dir / lbl_path.name)
+    else:
+        (out_lbl_dir / lbl_path.name).touch()
     return True
 
 
