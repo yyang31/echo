@@ -34,8 +34,9 @@ RUN_DIR = ROOT / "yolo" / "runs" / "door_window_stair_yolo"
 # Training limits (for quick testing; --full-training uses all data with 80/20 split)
 TRAIN_LIMIT = 500    # Quick training limit
 VAL_LIMIT = 125      # Quick validation limit
-TRAIN_EPOCHS = 20
+TRAIN_EPOCHS = 100
 IMG_EXT = ".jpg"
+BATCH_SIZE = 4       # Reduced batch size for stability on MPS
 
 CLASS_NAMES = ["door", "stairs", "window"]
 
@@ -116,15 +117,30 @@ def copy_sample(img_path: Path, lbl_path: Path, out_img_dir: Path, out_lbl_dir: 
                 return False
             # Parse bbox values
             try:
-                _ = list(map(float, parts[1:5]))
+                bbox_values = list(map(float, parts[1:5]))
             except Exception:
                 print(f"Skipping {img_path.name} - invalid bbox values in line {i+1}")
                 return False
+            
+            # Validate bbox ranges - clamp invalid values instead of skipping
+            x, y, w, h = bbox_values
+            if x < 0 or x > 1 or y < 0 or y > 1:
+                print(f"Warning: {img_path.name} line {i+1} has coords outside [0,1], clamping")
+                x = max(0.0, min(1.0, x))
+                y = max(0.0, min(1.0, y))
+                lines[i] = f"{cls} {x} {y} {w} {h}"
+            
+            if w <= 0 or w > 1 or h <= 0 or h > 1:
+                print(f"Warning: {img_path.name} line {i+1} has invalid size, clamping")
+                w = max(0.01, min(0.99, w))
+                h = max(0.01, min(0.99, h))
+                lines[i] = f"{cls} {x} {y} {w} {h}"
 
     # Passed validation, copy files
     shutil.copy2(img_path, out_img_dir / img_path.name)
     if lines:
-        shutil.copy2(lbl_path, out_lbl_dir / lbl_path.name)
+        with open(out_lbl_dir / lbl_path.name, 'w') as f:
+            f.write('\n'.join(lines) + '\n')
     else:
         (out_lbl_dir / lbl_path.name).touch()
     return True
@@ -211,7 +227,7 @@ def train_yolo(data_yaml: Path):
             data=str(data_yaml),
             epochs=TRAIN_EPOCHS,
             imgsz=640,
-            batch=16,
+            batch=BATCH_SIZE,
             project=str(RUN_DIR.parent),
             name=RUN_DIR.name,
             exist_ok=True,
@@ -219,6 +235,17 @@ def train_yolo(data_yaml: Path):
             verbose=True,
             plots=True,
             device=device,
+            patience=5,
+            hsv_h=0.015,
+            hsv_s=0.7,
+            hsv_v=0.4,
+            degrees=10.0,
+            translate=0.1,
+            scale=0.5,
+            flipud=0.0,
+            fliplr=0.5,
+            mosaic=1.0,
+            close_mosaic=15,
         )
 
     return model, results

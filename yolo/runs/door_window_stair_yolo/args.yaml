@@ -3,10 +3,10 @@ mode: train
 model: yolo26n.pt
 data: /Users/stanleyyang/Library/CloudStorage/GoogleDrive-stanley316868@gmail.com/My
   Drive/School/2026 Spring/CSCI 682 - 601 Topics Artificial Intel/final project/echo/yolo/door_window_stair_yolo_dataset/data.yaml
-epochs: 20
+epochs: 100
 time: null
-patience: 100
-batch: 16
+patience: 5
+batch: 4
 imgsz: 640
 save: true
 save_period: -1
@@ -25,7 +25,7 @@ deterministic: true
 single_cls: false
 rect: false
 cos_lr: false
-close_mosaic: 10
+close_mosaic: 15
 resume: false
 amp: true
 fraction: 1.0
@@ -92,7 +92,7 @@ nbs: 64
 hsv_h: 0.015
 hsv_s: 0.7
 hsv_v: 0.4
-degrees: 0.0
+degrees: 10.0
 translate: 0.1
 scale: 0.5
 shear: 0.0
