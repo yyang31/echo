@@ -1,3 +1,4 @@
 .venv/
 door_window_stair_dataset/
 yolo/door_window_stair_yolo_dataset/
+__pycache__/
