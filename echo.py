@@ -78,10 +78,10 @@ def compute_depth_map(frame_1, frame_2, stereo, focal_length, baseline,
 
             if valid_b > valid_a * 1.3 and not stereo_flip:
                 stereo_flip = True
-                print(f"Auto-switch: using (cap_2, cap_1) — center valid {valid_b} vs {valid_a}")
+                print(f"Auto-switch: using (cap_2, cap_1) - center valid {valid_b} vs {valid_a}")
             elif valid_a > valid_b * 1.3 and stereo_flip:
                 stereo_flip = False
-                print(f"Auto-switch: using (cap_1, cap_2) — center valid {valid_a} vs {valid_b}")
+                print(f"Auto-switch: using (cap_1, cap_2) - center valid {valid_a} vs {valid_b}")
         except Exception:
             pass
 
@@ -149,29 +149,10 @@ def compute_depth_map(frame_1, frame_2, stereo, focal_length, baseline,
             last_center_depth = depth_vals_win if depth_vals_win is not None else depth_from_disp
             last_center_disparity = center_disp
 
-        legend_lines = [
-            f"Range: {DEPTH_MIN_CM:.0f}-{DEPTH_MAX_CM:.0f} cm",
-            f"Near < {DEPTH_NEAR_CM:.0f} cm",
-            f"Mid  {DEPTH_NEAR_CM:.0f}-{DEPTH_MID_CM:.0f} cm",
-            f"Far  >= {DEPTH_MID_CM:.0f} cm",
-        ]
-        if last_center_depth is not None:
-            if last_center_depth <= DEPTH_NEAR_CM:
-                center_band = "Near"
-            elif last_center_depth <= DEPTH_MID_CM:
-                center_band = "Mid"
-            else:
-                center_band = "Far"
-            legend_lines.append(f"Center: {last_center_depth:.1f} cm ({center_band})")
-        else:
-            legend_lines.append("Center: No valid depth")
-
-        for idx, text in enumerate(legend_lines):
-            y = 25 + idx * 22
-            cv2.putText(
+        cv2.putText(
                 depth_colormap,
-                text,
-                (10, y),
+                f"Center: {last_center_depth:.1f} cm",
+                (10, 25),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.6,
                 (255, 255, 255),
@@ -339,7 +320,7 @@ def main():
 
     # Initialize Stereo Matcher (tuned for more reliable matches)
     num_disp = 16 * 6  # must be divisible by 16; increase if you need larger depth range
-    block = 7  # odd, between 3..11 — balances detail vs stability
+    block = 7  # odd, between 3..11 - balances detail vs stability
     stereo = cv2.StereoSGBM_create(
         minDisparity=0,
         numDisparities=num_disp,
@@ -354,7 +335,7 @@ def main():
         mode=cv2.STEREO_SGBM_MODE_SGBM_3WAY,
     )
 
-    # Default disparity order: use (cap_2, cap_1) — same as pressing 'r' once.
+    # Default disparity order: use (cap_2, cap_1) - same as pressing 'r' once.
     # This matches the user's observed better behavior when moving the chessboard.
     stereo_flip = True
     # How often (frames) to re-check ordering at runtime and thresholds
