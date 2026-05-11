@@ -149,15 +149,23 @@ def compute_depth_map(frame_1, frame_2, stereo, focal_length, baseline,
             last_center_depth = depth_vals_win if depth_vals_win is not None else depth_from_disp
             last_center_disparity = center_disp
 
+        if last_center_depth is not None:
+            if last_center_depth <= DEPTH_NEAR_CM:
+                center_band = "Near"
+            elif last_center_depth <= DEPTH_MID_CM:
+                center_band = "Mid"
+            else:
+                center_band = "Far"
+
         cv2.putText(
-                depth_colormap,
-                f"Center: {last_center_depth:.1f} cm",
-                (10, 25),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                (255, 255, 255),
-                2,
-            )
+            depth_colormap,
+            f"Center: {last_center_depth:.1f} cm ({center_band})",
+            (10, 25),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (255, 255, 255),
+            2,
+        )
 
     return depth_map, depth_colormap, depth_history, last_center_depth, last_center_disparity
 
