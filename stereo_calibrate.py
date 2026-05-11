@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-import glob
 import sys
 
 # --- SETTINGS ---
@@ -12,19 +11,6 @@ RIGHT_CAMERA_INDEX = 2
 AUTO_SAVE_INTERVAL_SEC = 0.8
 AUTO_SAVE_MIN_CENTER_SHIFT_PX = 25.0
 AUTO_SAVE_MIN_SCALE_CHANGE_PX = 15.0
-
-
-def get_real_camera_indexes():
-    devices = glob.glob('/dev/video*')
-    real_indexes = []
-    for dev in sorted(devices):
-        idx = int(dev.replace('/dev/video', ''))
-        try:
-            real_indexes.append(idx)
-        except Exception:
-            continue
-    return real_indexes
-
 
 def capture_pairs(left_idx=None, right_idx=None):
     if left_idx is None or right_idx is None:
