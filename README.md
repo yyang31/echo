@@ -16,6 +16,9 @@ python /home/stanley/Repos/echo/echo.py
 
 ## Credit
 
+Kaggle Dataset
+https://www.kaggle.com/datasets/nderalparslan/dwsonder
+
 StereoSGBM
 https://www.youtube.com/watch?v=gffZ3S9pBUE
 
