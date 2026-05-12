@@ -5,6 +5,14 @@ import numpy as np
 from pathlib import Path
 
 from ultralytics import YOLO
+import threading
+import math
+
+# Optional audio playback dependency. If not installed, sound will be disabled with a helpful message.
+try:
+    import simpleaudio as sa
+except Exception:
+    sa = None
 
 # --- CONFIGURATION ---
 BASELINE = 6.5  # <--- MEASURE THE DISTANCE BETWEEN YOUR CAMERAS IN CM
@@ -22,6 +30,109 @@ DEPTH_MAX_CM = 400.0
 # Human-friendly distance bands
 DEPTH_NEAR_CM = 100.0
 DEPTH_MID_CM = 250.0
+
+# Sound runtime state (module-level so thread and main can share)
+sound_enabled = False
+sound_thread = None
+sound_stop_event = None
+latest_center_depth = None
+
+
+def depth_to_sound_params(depth):
+    """Map a depth (cm) to (frequency Hz, amplitude 0..1, duration s, period s).
+
+    Closer -> higher pitch and louder; distances are clamped to DEPTH_MIN_CM..DEPTH_MAX_CM.
+    """
+    if depth is None:
+        return None
+    try:
+        d = float(depth)
+    except Exception:
+        return None
+
+    if not np.isfinite(d):
+        return None
+
+    d = float(np.clip(d, DEPTH_MIN_CM, DEPTH_MAX_CM))
+
+    # Frequency mapping: near -> high, far -> low (lowered for less shrill beeps)
+    F_NEAR_HZ = 900.0
+    F_FAR_HZ = 300.0
+    t = (d - DEPTH_MIN_CM) / (DEPTH_MAX_CM - DEPTH_MIN_CM)
+    freq = F_NEAR_HZ + (F_FAR_HZ - F_NEAR_HZ) * t
+
+    # Amplitude mapping (safety caps)
+    A_NEAR = 0.6
+    A_FAR = 0.05
+    amp = float(A_NEAR + (A_FAR - A_NEAR) * t)
+    amp = float(np.clip(amp, 0.0, 1.0))
+
+    # Period / duration mapping: closer -> more frequent beeps
+    MIN_PERIOD = 0.25
+    MAX_PERIOD = 1.0
+    period = float(MIN_PERIOD + (MAX_PERIOD - MIN_PERIOD) * t)
+    duration = min(0.12, period * 0.6)
+
+    return freq, amp, duration, period
+
+
+def sound_thread_func(stop_event):
+    """Background thread that emits discrete beeps based on `latest_center_depth`.
+
+    Uses `simpleaudio` if available. The thread exits when `stop_event` is set.
+    """
+    sample_rate = 44100
+
+    if sa is None:
+        print("Sound disabled: install 'simpleaudio' (pip install simpleaudio) to enable audio.")
+        return
+
+    while not stop_event.is_set():
+        depth = latest_center_depth
+        params = depth_to_sound_params(depth)
+        if params is None:
+            # nothing to play right now
+            stop_event.wait(0.2)
+            continue
+
+        freq, amp, duration, period = params
+
+        # Generate sine wave
+        samples_count = max(1, int(sample_rate * duration))
+        t = np.linspace(0, duration, samples_count, False)
+        waveform = np.sin(2 * math.pi * freq * t)
+
+        # Apply simple fade-in/out envelope to reduce clicks
+        env_len = int(0.01 * sample_rate)
+        if env_len * 2 < samples_count:
+            env = np.ones_like(waveform)
+            env[:env_len] = np.linspace(0.0, 1.0, env_len)
+            env[-env_len:] = np.linspace(1.0, 0.0, env_len)
+            waveform *= env
+
+        # Scale to 16-bit signed integers
+        max_amp = 2 ** 15 - 1
+        audio = (waveform * amp * max_amp).astype(np.int16)
+
+        try:
+            play_obj = sa.play_buffer(audio.tobytes(), 1, 2, sample_rate)
+            # wait for tone to finish or exit early if stop_event set
+            while play_obj.is_playing():
+                if stop_event.wait(0.05):
+                    try:
+                        play_obj.stop()
+                    except Exception:
+                        pass
+                    return
+                # otherwise loop until finished
+        except Exception as exc:
+            print(f"Warning: sound playback failed: {exc}")
+            return
+
+        # wait until next beep, but exit early if stop_event
+        remaining = max(0.0, period - duration)
+        stop_event.wait(remaining)
+
 
 def compute_depth_map(frame_1, frame_2, stereo, focal_length, baseline,
                       use_rectification, rect_maps, depth_history,
@@ -149,6 +260,7 @@ def compute_depth_map(frame_1, frame_2, stereo, focal_length, baseline,
             last_center_depth = depth_vals_win if depth_vals_win is not None else depth_from_disp
             last_center_disparity = center_disp
 
+        center_band = "N/A"
         if last_center_depth is not None:
             if last_center_depth <= DEPTH_NEAR_CM:
                 center_band = "Near"
@@ -236,7 +348,7 @@ def run_yolo_inference(model, frame_1, depth_map, yolo_enabled, do_infer,
 
 
 def main():
-    global BASELINE
+    global BASELINE, sound_enabled, sound_thread, sound_stop_event, latest_center_depth
     left_window = "Left Camera"
     depth_window = "Real-Time Depth (Heatmap)"
     yolo_window = "YOLO Predictions"
@@ -417,6 +529,9 @@ def main():
                 MIN_VALID_PIXELS_FOR_OK, frame_count
             )
 
+                # publish latest center depth for audio thread
+            latest_center_depth = last_center_depth
+
         frame_count += 1
         do_infer = yolo_enabled and (frame_count % infer_stride) == 0
         annotated_frame, last_annotated = run_yolo_inference(
@@ -472,6 +587,37 @@ def main():
             else:
                 cv2.destroyWindow(depth_window)
                 print("Disparity/depth heatmap disabled")
+        if key in (ord('s'), ord('S')):
+            # Toggle sound on/off
+            if sa is None:
+                print("Sound unavailable: install 'simpleaudio' (pip install simpleaudio)")
+            else:
+                sound_enabled = not sound_enabled
+                if sound_enabled:
+                    sound_stop_event = threading.Event()
+                    sound_thread = threading.Thread(target=sound_thread_func, args=(sound_stop_event,), daemon=True)
+                    sound_thread.start()
+                    print("Sound enabled")
+                else:
+                    if sound_stop_event is not None:
+                        sound_stop_event.set()
+                    if sound_thread is not None:
+                        sound_thread.join(timeout=1.0)
+                    sound_thread = None
+                    sound_stop_event = None
+                    print("Sound disabled")
+
+    # Ensure sound thread is stopped on exit
+    if sound_stop_event is not None:
+        try:
+            sound_stop_event.set()
+        except Exception:
+            pass
+    if sound_thread is not None:
+        try:
+            sound_thread.join(timeout=1.0)
+        except Exception:
+            pass
 
     cap_1.release()
     cap_2.release()

@@ -27,3 +27,6 @@ https://docs.opencv.org/4.x/d4/d94/tutorial_camera_calibration.html
 
 Doors, Windows and Stairs Dataset
 https://www.kaggle.com/datasets/nderalparslan/dwsonder?resource=download-directory
+
+Simpleaudio Python Library
+https://simpleaudio.readthedocs.io/en/latest/

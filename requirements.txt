@@ -1,0 +1,4 @@
+simpleaudio
+ultralytics
+opencv-python
+numpy
