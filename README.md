@@ -30,3 +30,8 @@ https://www.kaggle.com/datasets/nderalparslan/dwsonder?resource=download-directo
 
 Simpleaudio Python Library
 https://simpleaudio.readthedocs.io/en/latest/
+
+pyttsx3 Python Library - text to speech
+https://pyttsx3.readthedocs.io/en/latest/
+
+In `echo.py`, press `s` to toggle the beep + label speech loop while YOLO is enabled.

@@ -12,6 +12,30 @@ AUTO_SAVE_INTERVAL_SEC = 0.8
 AUTO_SAVE_MIN_CENTER_SHIFT_PX = 25.0
 AUTO_SAVE_MIN_SCALE_CHANGE_PX = 15.0
 
+CHESSBOARD_CRITERIA = (
+    cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
+    30,
+    0.001,
+)
+CLASSIC_CHESSBOARD_FLAGS = (
+    cv2.CALIB_CB_ADAPTIVE_THRESH
+    | cv2.CALIB_CB_NORMALIZE_IMAGE
+    | cv2.CALIB_CB_FAST_CHECK
+)
+SB_CHESSBOARD_FLAGS = 0
+
+
+def detect_chessboard(gray):
+    if hasattr(cv2, "findChessboardCornersSB"):
+        found, corners = cv2.findChessboardCornersSB(gray, CHESSBOARD_SIZE, flags=SB_CHESSBOARD_FLAGS)
+        if found:
+            return found, corners.astype(np.float32)
+
+    found, corners = cv2.findChessboardCorners(gray, CHESSBOARD_SIZE, None, CLASSIC_CHESSBOARD_FLAGS)
+    if found:
+        corners = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), CHESSBOARD_CRITERIA)
+    return found, corners
+
 def capture_pairs(left_idx=None, right_idx=None):
     if left_idx is None or right_idx is None:
         left_idx = LEFT_CAMERA_INDEX if left_idx is None else left_idx
@@ -50,8 +74,8 @@ def capture_pairs(left_idx=None, right_idx=None):
         grayL = cv2.cvtColor(frameL, cv2.COLOR_BGR2GRAY)
         grayR = cv2.cvtColor(frameR, cv2.COLOR_BGR2GRAY)
 
-        foundL, cornersL = cv2.findChessboardCorners(grayL, CHESSBOARD_SIZE, None)
-        foundR, cornersR = cv2.findChessboardCorners(grayR, CHESSBOARD_SIZE, None)
+        foundL, cornersL = detect_chessboard(grayL)
+        foundR, cornersR = detect_chessboard(grayR)
 
         vis = disp.copy()
         if foundL:
@@ -85,9 +109,9 @@ def capture_pairs(left_idx=None, right_idx=None):
                 )
 
         if should_auto_save:
-            imgpointsL.append(cornersL)
-            imgpointsR.append(cornersR)
-            objpoints.append(objp)
+            imgpointsL.append(cornersL.copy())
+            imgpointsR.append(cornersR.copy())
+            objpoints.append(objp.copy())
             count += 1
             print(f"Auto-saved pair #{count}")
             last_auto_save_ts = now_ts

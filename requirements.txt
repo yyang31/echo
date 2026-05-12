@@ -2,3 +2,4 @@ simpleaudio
 ultralytics
 opencv-python
 numpy
+pyttsx3
