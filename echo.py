@@ -8,11 +8,7 @@ from ultralytics import YOLO
 import threading
 import math
 
-# Optional audio playback dependency. If not installed, sound will be disabled with a helpful message.
-try:
-    import simpleaudio as sa
-except Exception:
-    sa = None
+import simpleaudio as sa
 
 # --- CONFIGURATION ---
 BASELINE = 6.5  # <--- MEASURE THE DISTANCE BETWEEN YOUR CAMERAS IN CM
@@ -79,13 +75,9 @@ def depth_to_sound_params(depth):
 def sound_thread_func(stop_event):
     """Background thread that emits discrete beeps based on `latest_center_depth`.
 
-    Uses `simpleaudio` if available. The thread exits when `stop_event` is set.
+    The thread exits when `stop_event` is set.
     """
     sample_rate = 44100
-
-    if sa is None:
-        print("Sound disabled: install 'simpleaudio' (pip install simpleaudio) to enable audio.")
-        return
 
     while not stop_event.is_set():
         depth = latest_center_depth
@@ -588,24 +580,20 @@ def main():
                 cv2.destroyWindow(depth_window)
                 print("Disparity/depth heatmap disabled")
         if key in (ord('s'), ord('S')):
-            # Toggle sound on/off
-            if sa is None:
-                print("Sound unavailable: install 'simpleaudio' (pip install simpleaudio)")
+            sound_enabled = not sound_enabled
+            if sound_enabled:
+                sound_stop_event = threading.Event()
+                sound_thread = threading.Thread(target=sound_thread_func, args=(sound_stop_event,), daemon=True)
+                sound_thread.start()
+                print("Sound enabled")
             else:
-                sound_enabled = not sound_enabled
-                if sound_enabled:
-                    sound_stop_event = threading.Event()
-                    sound_thread = threading.Thread(target=sound_thread_func, args=(sound_stop_event,), daemon=True)
-                    sound_thread.start()
-                    print("Sound enabled")
-                else:
-                    if sound_stop_event is not None:
-                        sound_stop_event.set()
-                    if sound_thread is not None:
-                        sound_thread.join(timeout=1.0)
-                    sound_thread = None
-                    sound_stop_event = None
-                    print("Sound disabled")
+                if sound_stop_event is not None:
+                    sound_stop_event.set()
+                if sound_thread is not None:
+                    sound_thread.join(timeout=1.0)
+                sound_thread = None
+                sound_stop_event = None
+                print("Sound disabled")
 
     # Ensure sound thread is stopped on exit
     if sound_stop_event is not None:
