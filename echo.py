@@ -206,7 +206,31 @@ def compute_depth_map(frame_1, frame_2, stereo, focal_length, baseline,
         if np.any(valid_dm):
             last_center_depth = float(np.median(dm_win[valid_dm]))
 
-    return depth_map, depth_history, last_center_depth
+    return depth_map, depth_history, last_center_depth, disparity
+
+
+def disparity_to_display(disparity):
+    """Convert raw disparity values into a colorized image for display."""
+    display = np.zeros((*disparity.shape, 3), dtype=np.uint8)
+    valid_mask = np.isfinite(disparity) & (disparity > 0.0)
+
+    if not np.any(valid_mask):
+        return display
+
+    valid_values = disparity[valid_mask]
+    disp_min = float(np.min(valid_values))
+    disp_max = float(np.max(valid_values))
+
+    if not np.isfinite(disp_min) or not np.isfinite(disp_max) or disp_max <= disp_min:
+        normalized = np.zeros_like(disparity, dtype=np.uint8)
+    else:
+        normalized = np.zeros_like(disparity, dtype=np.uint8)
+        scaled = (disparity[valid_mask] - disp_min) / (disp_max - disp_min)
+        normalized[valid_mask] = np.clip(scaled * 255.0, 0, 255).astype(np.uint8)
+
+    display = cv2.applyColorMap(normalized, cv2.COLORMAP_TURBO)
+    display[~valid_mask] = 0
+    return display
 
 
 def run_yolo_inference(model, frame_1, depth_map, confidence_threshold, yolo_imgsz):
@@ -259,7 +283,8 @@ def run_yolo_inference(model, frame_1, depth_map, confidence_threshold, yolo_img
 
 def main():
     global sound_stop_event, latest_center_depth, latest_yolo_label, BASELINE
-    window_name = "Environment Camera & Hearing Object-detector"
+    camera_window_name = "Environment Camera & Hearing Object-detector"
+    disparity_window_name = "Disparity Map"
 
     if not MODEL_PATH.exists():
         print(f"Error: model not found at '{MODEL_PATH}'.")
@@ -349,7 +374,7 @@ def main():
     depth_history = None
 
     print("Running YOLO inference with sound.")
-    print("Press 'd' to toggle frame display.")
+    print("Press 'd' to toggle display windows.")
     print("Press 'q' to quit.")
 
     frame_count = 0
@@ -378,7 +403,7 @@ def main():
             frame_1 = cv2.resize(frame_1, calibrated_size, interpolation=cv2.INTER_LINEAR)
             frame_2 = cv2.resize(frame_2, calibrated_size, interpolation=cv2.INTER_LINEAR)
 
-        depth_map, depth_history, last_center_depth = compute_depth_map(
+        depth_map, depth_history, last_center_depth, disparity = compute_depth_map(
             frame_1, frame_2, stereo, focal_length, BASELINE,
             use_rectification, rect_maps, depth_history
         )
@@ -422,7 +447,26 @@ def main():
             )
 
         if display_enabled:
-            cv2.imshow(window_name, annotated_frame)
+            cv2.imshow(camera_window_name, annotated_frame)
+
+            disparity_display = disparity_to_display(disparity)
+
+            # Reuse the same center-depth annotation position on the disparity view.
+            cv2.rectangle(disparity_display, (x0, y0), (x1, y1), (0, 0, 255), 2)
+
+            if last_center_depth is not None and not np.isnan(last_center_depth):
+                depth_text = f"Center: {last_center_depth:.1f} cm"
+                cv2.putText(
+                    disparity_display,
+                    depth_text,
+                    (x0, max(y0 - 10, 20)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (255, 255, 255),
+                    2,
+                )
+
+            cv2.imshow(disparity_window_name, disparity_display)
 
         key = cv2.waitKey(1) & 0xFF
         if key in (ord('q'), ord('Q')):
