@@ -25,6 +25,10 @@ CENTER_SIZE = 50
 DEPTH_MIN_CM = 30.0
 DEPTH_MAX_CM = 400.0
 
+# Disparity filtering for more stable depth computation
+DISPARITY_GAUSSIAN_KSIZE = 9
+DEPTH_TEMPORAL_ALPHA = 0.2
+
 # TTS label speaking timeout (seconds)
 TTS_LABEL_TIMEOUT = 5.0
 
@@ -161,8 +165,19 @@ def compute_depth_map(frame_1, frame_2, stereo, focal_length, baseline,
     gray_2 = cv2.cvtColor(frame_2, cv2.COLOR_BGR2GRAY)
 
     # Compute Disparity
-    disparity = stereo.compute(gray_2, gray_1).astype(np.float32) / 16.0
+    raw_disparity = stereo.compute(gray_1, gray_2).astype(np.float32) / 16.0
 
+    # Filter disparity before depth conversion
+    disparity = np.where(raw_disparity > 0.0, raw_disparity, 0.0).astype(np.float32)
+    disparity = cv2.GaussianBlur(
+        disparity,
+        (DISPARITY_GAUSSIAN_KSIZE, DISPARITY_GAUSSIAN_KSIZE),
+        0,
+    )
+
+    # Keep invalid regions invalid after filtering.
+    raw_valid_mask = raw_disparity > 0.0
+    disparity[~raw_valid_mask] = 0.0
     valid_mask = disparity > 0.0
 
     # Calculate Depth
@@ -173,7 +188,7 @@ def compute_depth_map(frame_1, frame_2, stereo, focal_length, baseline,
     if depth_history is None:
         depth_history = depth_map.copy()
     else:
-        alpha = 0.5
+        alpha = DEPTH_TEMPORAL_ALPHA
         valid_cur = ~np.isnan(depth_map)
         valid_hist = ~np.isnan(depth_history)
         both_valid = valid_cur & valid_hist
@@ -204,7 +219,7 @@ def compute_depth_map(frame_1, frame_2, stereo, focal_length, baseline,
         dm_win = depth_map[y0:y1, x0:x1]
         valid_dm = ~np.isnan(dm_win)
         if np.any(valid_dm):
-            last_center_depth = float(np.median(dm_win[valid_dm]))
+            last_center_depth = float(np.percentile(dm_win[valid_dm], 10))
 
     return depth_map, depth_history, last_center_depth, disparity
 
@@ -327,6 +342,7 @@ def main():
         if 'stereo_rms' in data:
             stereo_rms = float(np.asarray(data['stereo_rms']).reshape(-1)[0])
             if stereo_rms is not None and np.isfinite(stereo_rms) and stereo_rms > 1.5:
+                print(f"Warning: loaded stereo calibration has high RMS error ({stereo_rms:.4f}). Depth quality may be poor.")
                 rect_maps = None
 
         if focal_length is None:
@@ -340,6 +356,14 @@ def main():
 
     cap_1 = cv2.VideoCapture(LEFT_CAMERA_INDEX)
     cap_2 = cv2.VideoCapture(RIGHT_CAMERA_INDEX)
+
+    # Disable Auto-Exposure
+    cap_1.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25) 
+    cap_2.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
+
+    # Set a fixed exposure time
+    cap_1.set(cv2.CAP_PROP_EXPOSURE, -5) 
+    cap_2.set(cv2.CAP_PROP_EXPOSURE, -5)
 
     if calibrated_size is not None:
         cap_1.set(cv2.CAP_PROP_FRAME_WIDTH, calibrated_size[0])
@@ -389,8 +413,13 @@ def main():
     tts_thread.start()
 
     while True:
-        success_1, frame_1 = cap_1.read()
-        success_2, frame_2 = cap_2.read()
+        # Grab frames simultaneously (or as close as USB allows)
+        cap_1.grab()
+        cap_2.grab()
+
+        # Retrieve and decode the frames
+        success_1, frame_1 = cap_1.retrieve()
+        success_2, frame_2 = cap_2.retrieve()
 
         if not success_1 or not success_2:
             print("Error: failed to read frame(s) from camera stream.")
@@ -421,10 +450,9 @@ def main():
 
         # Draw center depth region box
         h, w = depth_map.shape
-        # Shift measurement point right by baseline/2 (converted to pixels)
-        baseline_offset_px = int((BASELINE * focal_length) / (CENTER_SIZE * 2))
         center_y = h // 2
-        center_x = w // 2 + baseline_offset_px
+        center_x = w // 2
+        
         center_x = max(0, min(center_x, w - 1))  # Clamp to valid range
         hy = CENTER_SIZE // 2
         y0 = max(0, center_y - hy)
